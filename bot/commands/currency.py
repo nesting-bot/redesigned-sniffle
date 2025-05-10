@@ -13,6 +13,8 @@ from ..utils.logging_utils import log_action
 from ..utils.discord_helpers import get_cooldown_time_left, set_cooldown
 from ..economy.currency import calc_fish, calc_meat
 
+from ..bot_config import FISHING_COMMAND_COOLDOWN, HUNTING_COMMAND_COOLDOWN
+
 
 def _cooldown_fail(inter, rem: int, cmd_name: str) -> None:
     m, s = divmod(rem, 60)
@@ -42,7 +44,7 @@ def setup(client) -> None:  # receives CenoClient instance
     async def fish_cmd(inter: discord.Interaction) -> None:
         log_action(inter.user.name, inter.user.id, "/fish")
 
-        if (rem := get_cooldown_time_left(inter.user.id, "fish", 1800)):
+        if (rem := get_cooldown_time_left(inter.user.id, "fish", FISHING_COMMAND_COOLDOWN)):
             return await _cooldown_fail(inter, rem, "fishing")
 
         set_cooldown(inter.user.id, "fish")
@@ -64,7 +66,7 @@ def setup(client) -> None:  # receives CenoClient instance
     async def hunt_cmd(inter: discord.Interaction) -> None:
         log_action(inter.user.name, inter.user.id, "/hunt")
 
-        if (rem := get_cooldown_time_left(inter.user.id, "hunt", 3600)):
+        if (rem := get_cooldown_time_left(inter.user.id, "hunt", HUNTING_COMMAND_COOLDOWN)):
             return await _cooldown_fail(inter, rem, "hunting")
 
         set_cooldown(inter.user.id, "hunt")
@@ -101,3 +103,7 @@ def setup(client) -> None:  # receives CenoClient instance
             color=discord.Color.blue(),
         )
         await inter.response.send_message(embed=embed, ephemeral=True)
+
+    @tree.command(name="justtesting", description="TestCommand")
+    async def test_command_here(inter:discord.Interaction) -> None:
+        await inter.response.send_message(content="TESTING COMMAND NOW")
