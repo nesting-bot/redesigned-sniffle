@@ -5,6 +5,7 @@ Entrypoint for /nest  – builds on the Views defined in bot.nest.views
 import random
 import discord
 from discord import app_commands
+from discord.ext import commands
 
 from ..utils.io_utils import load_steam_ids, save_steam_ids
 from ..utils.logging_utils import log_action
@@ -17,15 +18,17 @@ from ..nest.views import (
 )
 
 # ----------------------------------------------------------------------- #
-def setup(client) -> None:
-    tree = client.tree
+class NestCog(commands.Cog, name="nest"):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.client = bot            # keep a reference you already use in views
 
-    @tree.command(name="nest", description="Begin the Nesting process!")
-    async def nest_cmd(inter: discord.Interaction):
+    @app_commands.command(name="nest", description="Begin the Nesting process!")
+    async def nest_cmd(self, inter: discord.Interaction):
         # if user already linked a Steam ID, skip straight to code confirm
         linked = load_steam_ids().get(str(inter.user.id))
         if linked:
-            parent = NestWorkflowParentView(linked["steam_id"], inter.user.id, client)
+            parent = NestWorkflowParentView(linked["steam_id"], inter.user.id, self.client)
             # include nickname in prompt
             await inter.response.send_message(
                 "‌‌ \n"
@@ -44,3 +47,6 @@ def setup(client) -> None:
                 ephemeral=True
             )
             return
+        
+async def setup(bot):
+    await bot.add_cog(NestCog(bot))

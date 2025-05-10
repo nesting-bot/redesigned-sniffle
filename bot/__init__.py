@@ -4,6 +4,7 @@ Initialises the Discord client, registers every command package and exposes
 """
 
 import discord
+from discord.ext import commands
 from discord import app_commands
 
 from .bot_config import DISCORD_TOKEN, TEST_GUILD_ID
@@ -14,15 +15,15 @@ from .utils.remote_utils import background_health_probe, set_backend_status
 from .commands import currency, staff, game, nest  # noqa: F401 (import side effects)
 
 
-class CenoClient(discord.Client):
+class CenoClient(commands.Bot):
     """
     Thin wrapper that owns the CommandTree & colour‑pack maps.
     """
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        super().__init__(intents=intents)
+        super().__init__(command_prefix="!", intents=intents)   # prefix unused, but required
 
-        self.tree: app_commands.CommandTree = app_commands.CommandTree(self)
+        # self.tree already exists on commands.Bot
         # cached colour‑pack look‑ups
         self.colorpacks_map = load_colorpacks_reverse()
         self.pack_permissions = load_colorpack_meta()
@@ -38,9 +39,12 @@ class CenoClient(discord.Client):
         guild = discord.Object(id=TEST_GUILD_ID)
 
         # Each commands.<name>.setup(...) attaches its commands to the tree
-        for cmd_pkg in (currency, staff, game, nest):
-            cmd_pkg.setup(self)
-            print(f"Setting up {cmd_pkg}")
+        for ext in ("bot.commands.currency",
+                    "bot.commands.staff",
+                    "bot.commands.game",
+                    "bot.commands.nest"):
+            await self.load_extension(ext)
+            print(f"Loaded {ext}")
 
         await self.tree.sync(guild=guild)
         print("Slash‑commands synced to test guild.")
