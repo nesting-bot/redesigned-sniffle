@@ -17,13 +17,13 @@ GROW_COST = 25        # 🐟 cost when no event
 CD_SECONDS = 300      # 5‑minute personal cooldown
 
 
-def setup(client):
+def setup(client) -> None:
     tree = client.tree
 
     async def _do_remote(inter, endpoint: str):
         if not backend_available():
             return await inter.response.send_message(
-                "Sorry, the nest server is offline right now. Try again later.",
+                "Sorry, Nesting Bot is offline right now. Try again later.",
                 ephemeral=True
             )
 

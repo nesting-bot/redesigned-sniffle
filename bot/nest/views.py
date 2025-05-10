@@ -91,6 +91,88 @@ class SteamIdModal(Modal, title="Paste your 17‑digit Steam ID or Profile URL")
             f"Linked **{nickname}** → `{steam_id}`. Run /nest again!", ephemeral=True
         )
 
+class HelpToFindSteamView(discord.ui.View):
+    @discord.ui.button(label="Yes, Steam is open!", style=discord.ButtonStyle.success)
+    async def steam_open_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        instructions_view = OpenModalView()
+        await interaction.response.send_message(
+            content=(
+                "1) Go to your Steam Profile. This can be done by clicking on your username at the top-left of Steam. "
+                "(Next to 'Store','Library', and 'Community')\n"
+                "2) Copy the full URL right underneath where you just clicked (e.g. https://steamcommunity.com/profiles/765611980xxxx).\n"
+                "3) Click the button below to paste that link you've copied."
+            ),
+            view=instructions_view,
+            ephemeral=True
+        )
+        self.stop()
+
+    @discord.ui.button(label="No, Steam is not open", style=discord.ButtonStyle.danger)
+    async def steam_not_open(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "No worries! Please open Steam, navigate to your profile, and come back.",
+            ephemeral=True
+        )
+        self.stop()
+
+class OpenModalView(discord.ui.View):
+    @discord.ui.button(label="Enter Steam ID Now", style=discord.ButtonStyle.primary)
+    async def open_modal_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SteamIdModal())
+        self.stop()
+
+class KnowSteamView(discord.ui.View):
+    @discord.ui.button(label="I know my Steam ID", style=discord.ButtonStyle.success)
+    async def know_id_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SteamIdModal())
+        self.stop()
+
+    @discord.ui.button(label="Help, please!", style=discord.ButtonStyle.primary)
+    async def need_help_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "Let's walk you through finding your Steam ID.\nIs Steam open on your desktop?",
+            view=HelpToFindSteamView(),
+            ephemeral=True
+        )
+        self.stop()
+
+class LinkSteamView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "Great, let's get started!\n\nDo you know your 17-digit Steam ID?",
+            view=KnowSteamView(),
+            ephemeral=True
+        )
+        self.stop()
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "No problem! Come back anytime with /nest when you’re ready to link.",
+            ephemeral=True
+        )
+        self.stop()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # --------------------------- SlotChoiceView ---------------------------- #
 class SlotChoiceView(View):
@@ -248,7 +330,9 @@ class NestWorkflowParentView(View):
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def declined(self, interaction: discord.Interaction, _btn: Button):
         await interaction.response.send_message(
-            "Visit https://www.CenoColors.com to generate a code!",
-            ephemeral=False,
+            "‌‌ \n"
+            "Please visit the Animal Builder website to generate a code!\n"
+            "https://CenoColors.com",
+#            "[CenoColors.com](https://CenoColors.com)",     # This is a "Cleaner" look, but an external link
         )
         self.stop()
