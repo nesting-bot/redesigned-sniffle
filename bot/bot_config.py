@@ -88,7 +88,15 @@ TIME_OPTIONS_MAP: dict[str, int] = { #  /nest/views.py -- Determines what time o
     "Night": 100,
 }
 
-
+STAFF_ROLE_NAMES = {
+    "Admin",
+    "Head Admin",
+    "Mod",
+    "Trial Staff",
+    "Event Planner",
+    "Beta Tester",
+    "Owner",
+}
 
 
 

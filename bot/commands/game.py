@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio, random, time
 import discord
 from discord import app_commands
+from discord.ext import commands
 
 from ..nest.views import (
     GrowStartView,
@@ -131,14 +132,22 @@ def _global_cd_check(endpoint: str, limit_seconds: int) -> float:
 # --------------------------------------------------------------------------- #
 #  Cog / command registration
 # --------------------------------------------------------------------------- #
-def setup(client) -> None:     # noqa: PLR0915
-    tree = client.tree
+class GameCog(commands.Cog, name="game"):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.game_helpers = {
+            "finalize_grow":   self._finalize_grow,
+            "execute_tp":      self._execute_teleport,
+            "execute_weather": self._execute_weather,
+            "execute_time":    self._execute_time,
+        }
+
 
     # --------------------------------------------------------------------- #
     # /grow
     # --------------------------------------------------------------------- #
-    @tree.command(name="grow", description="Grow your animal – interactive workflow")
-    async def grow_cmd(inter: discord.Interaction):  # noqa: ANN001
+    @app_commands.command(name="grow", description="Grow your animal – interactive workflow")
+    async def grow_cmd(self, inter: discord.Interaction):  # noqa: ANN001
         if not backend_available():
             return await inter.response.send_message(
                 "Sorry, Nesting Bot is not in‑game right now. Please try again later.",
@@ -176,8 +185,8 @@ def setup(client) -> None:     # noqa: PLR0915
     # --------------------------------------------------------------------- #
     # /teleport
     # --------------------------------------------------------------------- #
-    @tree.command(name="teleport", description="Teleport yourself to Nesting Bot")
-    async def teleport_cmd(inter: discord.Interaction):  # noqa: ANN001
+    @app_commands.command(name="teleport", description="Teleport yourself to Nesting Bot")
+    async def teleport_cmd(self, inter: discord.Interaction):  # noqa: ANN001
         if not backend_available():
             return await inter.response.send_message(
                 "Sorry, Nesting Bot is not in‑game right now. Please try again later.",
@@ -204,8 +213,8 @@ def setup(client) -> None:     # noqa: PLR0915
     # --------------------------------------------------------------------- #
     # /weather
     # --------------------------------------------------------------------- #
-    @tree.command(name="weather", description="Change the in‑game weather")
-    async def weather_cmd(inter: discord.Interaction):  # noqa: ANN001
+    @app_commands.command(name="weather", description="Change the in‑game weather")
+    async def weather_cmd(self, inter: discord.Interaction):  # noqa: ANN001
         if not backend_available():
             return await inter.response.send_message(
                 "Sorry, Nesting Bot is not in‑game right now. Please try again later.",
@@ -236,8 +245,8 @@ def setup(client) -> None:     # noqa: PLR0915
     # --------------------------------------------------------------------- #
     # /time
     # --------------------------------------------------------------------- #
-    @tree.command(name="time", description="Change the in‑game time (2400‑tick day)")
-    async def time_cmd(inter: discord.Interaction):  # noqa: ANN001
+    @app_commands.command(name="time", description="Change the in‑game time (2400‑tick day)")
+    async def time_cmd(self, inter: discord.Interaction):  # noqa: ANN001
         if not backend_available():
             return await inter.response.send_message(
                 "Sorry, Nesting Bot is not in‑game right now. Please try again later.",
@@ -268,9 +277,9 @@ def setup(client) -> None:     # noqa: PLR0915
     # --------------------------------------------------------------------- #
     # /announce
     # --------------------------------------------------------------------- #
-    @tree.command(name="announce", description="Send a server‑wide announcement")
+    @app_commands.command(name="announce", description="Send a server‑wide announcement")
     @app_commands.describe(message="Text (≤255 chars) to broadcast in‑game")
-    async def announce_cmd(inter: discord.Interaction, message: str):  # noqa: ANN001
+    async def announce_cmd(self, inter: discord.Interaction, message: str):  # noqa: ANN001
         if len(message) > 255:
             return await inter.response.send_message(
                 "❌ Announcements are limited to **255** characters.",
@@ -295,8 +304,8 @@ def setup(client) -> None:     # noqa: PLR0915
     # --------------------------------------------------------------------- #
     # /health (unchanged)
     # --------------------------------------------------------------------- #
-    @tree.command(name="health", description="Show backend connection status")
-    async def health_cmd(inter: discord.Interaction):  # noqa: ANN001
+    @app_commands.command(name="health", description="Show backend connection status")
+    async def health_cmd(self, inter: discord.Interaction):  # noqa: ANN001
         status = "online ✅" if backend_available() else "offline ❌"
         await inter.response.send_message(f"Backend is **{status}**.", ephemeral=True)
 
@@ -387,3 +396,5 @@ def setup(client) -> None:     # noqa: PLR0915
         "execute_time":    _execute_time,
     }
 
+async def setup(bot: commands.Bot):
+    await bot.add_cog(GameCog(bot))
