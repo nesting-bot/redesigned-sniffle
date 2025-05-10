@@ -40,6 +40,7 @@ class CenoClient(discord.Client):
         # Each commands.<name>.setup(...) attaches its commands to the tree
         for cmd_pkg in (currency, staff, game, nest):
             cmd_pkg.setup(self)
+            print(f"Setting up {cmd_pkg}")
 
         await self.tree.sync(guild=guild)
         print("Slash‑commands synced to test guild.")

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-import random
+from typing import Optional, Dict
 
 import discord
 from discord.ui import View, Button, Modal, TextInput
@@ -20,7 +20,7 @@ from ..utils.io_utils import (
     _json_load,
 )
 from ..utils.colorpack import load_colorpacks_reverse
-from ..bot_config import SPECIES_LIST_JSON, GENDER_LIST_JSON
+from ..bot_config import SPECIES_LIST_JSON, GENDER_LIST_JSON, WEATHER_OPTIONS_MAP, TIME_OPTIONS_MAP
 from .obfuscation import decode_obfuscation_code
 from .sav_utils import ensure_cached_sav, upload_sav
 
@@ -47,6 +47,15 @@ def extract_17digit_id(user_input: str) -> str:
     if match_digits:
         return match_digits.group(0)
     raise ValueError("Could not find a 17‑digit Steam ID in your input.")
+
+def _lookup_steam_from_discord(mention: str) -> Optional[str]:
+    """Resolve a Discord mention / ID to linked SteamID, or None."""
+    m = re.match(r"<@!?(\d+)>", mention) or re.match(r"(\d{17,19})", mention)
+    if not m:
+        return None
+    did = m.group(1)
+    rec = load_steam_ids().get(str(did))
+    return rec["steam_id"] if rec else None
 
 
 class SteamIdModal(Modal, title="Paste your 17‑digit Steam ID or Profile URL"):
@@ -154,18 +163,6 @@ class LinkSteamView(discord.ui.View):
             ephemeral=True
         )
         self.stop()
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -336,3 +333,239 @@ class NestWorkflowParentView(View):
 #            "[CenoColors.com](https://CenoColors.com)",     # This is a "Cleaner" look, but an external link
         )
         self.stop()
+
+
+
+
+# ---------------------------------------------------------------------------
+# ▼▼▼  NEW COMMAND WORKFLOWS  ▼▼▼
+# ---------------------------------------------------------------------------
+
+# ----------------------------- /grow workflow -----------------------------
+
+def _grow_cost_blurb(needs_payment: bool, have: int, after: int) -> str:
+    cost = have - after
+    if not needs_payment:
+        return "A free‑grow event is active – no 🐟 cost!"
+    return (
+        f"Growing costs **{cost} 🐟** – you have **{have}**.\n"
+        f"After the grow, you will have **{after}🐟** left."
+    )
+
+
+class GrowStartView(View):
+    def __init__(
+        self,
+        *,
+        steam_rec: dict,
+        needs_payment: bool,
+        fish_have: int,
+        fish_after: int,
+        inter: discord.Interaction,
+    ):
+        super().__init__(timeout=120)
+        self.steam_rec = steam_rec
+        self.needs_payment = needs_payment
+        self.fish_have = fish_have
+        self.fish_after = fish_after
+        self.inter = inter
+
+    @discord.ui.button(label="Me", style=discord.ButtonStyle.primary)
+    async def me(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.edit_message(
+            content=_grow_cost_blurb(self.needs_payment, self.fish_have, self.fish_after),
+            view=GrowConfirmSelfView(
+                inter=self.inter,
+                steam_rec=self.steam_rec,
+                needs_payment=self.needs_payment,
+            ),
+        )
+
+    @discord.ui.button(label="Someone Else", style=discord.ButtonStyle.secondary)
+    async def someone(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.edit_message(
+            content=_grow_cost_blurb(self.needs_payment, self.fish_have, self.fish_after)
+            + "\nDo you want to use their Steam ID or Discord ID?",
+            view=GrowTargetMethodView(inter=self.inter, needs_payment=self.needs_payment),
+        )
+
+
+class GrowConfirmSelfView(View):
+    def __init__(self, *, inter: discord.Interaction, steam_rec: dict, needs_payment: bool):
+        super().__init__(timeout=60)
+        self.inter = inter
+        self.steam_rec = steam_rec
+        self.needs_payment = needs_payment
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success)
+    async def accept(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        helpers = self.inter.client.get_cog("game").game_helpers  # type: ignore[attr-defined]
+        await helpers["finalize_grow"](
+            self.inter,
+            self.steam_rec["steam_id"],
+            self.steam_rec["nickname"],
+            self.needs_payment,
+        )
+        await interaction.message.delete(delay=0)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.edit_message(content="Grow cancelled.", view=None)
+
+
+class GrowTargetMethodView(View):
+    def __init__(self, *, inter: discord.Interaction, needs_payment: bool):
+        super().__init__(timeout=90)
+        self.inter = inter
+        self.needs_payment = needs_payment
+
+    @discord.ui.button(label="Accept – Steam ID", style=discord.ButtonStyle.primary)
+    async def by_steam(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.send_modal(GrowSteamIDModal(self.inter, self.needs_payment))
+
+    @discord.ui.button(label="Accept – Discord ID", style=discord.ButtonStyle.primary)
+    async def by_discord(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.send_modal(GrowDiscordIDModal(self.inter, self.needs_payment))
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def stop(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.edit_message(content="Grow cancelled.", view=None)
+
+
+class GrowSteamIDModal(Modal, title="Enter a 17‑digit Steam ID"):
+    steam_id: TextInput = TextInput(
+        label="Steam ID",
+        min_length=17,
+        max_length=17,
+    )
+
+    def __init__(self, inter: discord.Interaction, needs_payment: bool):
+        super().__init__()
+        self.inter = inter
+        self.needs_payment = needs_payment
+
+    async def on_submit(self, interaction: discord.Interaction):  # noqa: ANN001
+        sid = str(self.steam_id.value).strip()
+        if not sid.isdigit():
+            return await interaction.response.send_message("❌ Steam ID must be numeric.", ephemeral=True)
+        view = GrowFinalConfirmView(
+            inter=self.inter,
+            target_steam=sid,
+            target_nick=None,
+            needs_payment=self.needs_payment,
+        )
+        await interaction.response.send_message(f"Grow **{sid}**?", view=view, ephemeral=True)
+
+
+class GrowDiscordIDModal(Modal, title="Enter a Discord mention or ID"):
+    discord_id: TextInput = TextInput(label="Discord user")
+
+    def __init__(self, inter: discord.Interaction, needs_payment: bool):
+        super().__init__()
+        self.inter = inter
+        self.needs_payment = needs_payment
+
+    async def on_submit(self, interaction: discord.Interaction):  # noqa: ANN001
+        mention = str(self.discord_id.value).strip()
+        sid = _lookup_steam_from_discord(mention)
+        if sid is None:
+            return await interaction.response.send_message(
+                "❌ No linked Steam ID found for that Discord user. Please try again with a Steam ID instead.",
+                ephemeral=True,
+            )
+        view = GrowFinalConfirmView(
+            inter=self.inter,
+            target_steam=sid,
+            target_nick=None,
+            needs_payment=self.needs_payment,
+        )
+        await interaction.response.send_message(f"Grow **{mention}** ({sid})?", view=view, ephemeral=True)
+
+
+class GrowFinalConfirmView(View):
+    def __init__(
+        self,
+        *,
+        inter: discord.Interaction,
+        target_steam: str,
+        target_nick: Optional[str],
+        needs_payment: bool,
+    ):
+        super().__init__(timeout=60)
+        self.inter = inter
+        self.target_steam = target_steam
+        self.target_nick = target_nick
+        self.needs_payment = needs_payment
+
+    @discord.ui.button(label="Grow!", style=discord.ButtonStyle.success)
+    async def do_grow(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        helpers = self.inter.client.get_cog("game").game_helpers  # type: ignore[attr-defined]
+        await helpers["finalize_grow"](
+            self.inter,
+            self.target_steam,
+            self.target_nick,
+            self.needs_payment,
+        )
+        await interaction.message.delete(delay=0)
+
+    @discord.ui.button(label="No, Don’t Grow", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, _: Button):  # noqa: ANN001
+        await interaction.response.edit_message(content="Grow cancelled.", view=None)
+
+
+# --------------------------- /teleport confirm ---------------------------- #
+class TeleportConfirmView(discord.ui.View):
+    def __init__(self, *, steam_rec: dict, inter: discord.Interaction):
+        super().__init__(timeout=30)
+        self.steam_rec = steam_rec
+        self.inter = inter
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def yes(self, interaction: discord.Interaction, _: discord.ui.Button):  # noqa: ANN001
+        helpers = self.inter.client.get_cog("game").game_helpers  # type: ignore[attr-defined]
+        await helpers["execute_tp"](self.inter, self.steam_rec)
+        await interaction.message.delete(delay=0)
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def no(self, interaction: discord.Interaction, _: discord.ui.Button):  # noqa: ANN001
+        await interaction.response.edit_message(content="Teleport cancelled.", view=None)
+
+
+# --------------------------- /weather picker ------------------------------ #
+class WeatherSelectView(discord.ui.View):
+    def __init__(self, inter: discord.Interaction):
+        super().__init__(timeout=90)
+        self.inter = inter
+        for human, machine in WEATHER_OPTIONS_MAP.items():
+            self.add_item(WeatherButton(label=human, machine_code=machine))
+
+
+class WeatherButton(discord.ui.Button):  # type: ignore[misc]
+    def __init__(self, *, label: str, machine_code: str):
+        super().__init__(label=label, style=discord.ButtonStyle.primary)
+        self.machine_code = machine_code
+
+    async def callback(self, interaction: discord.Interaction):  # noqa: ANN001
+        helpers = interaction.client.get_cog("game").game_helpers  # type: ignore[attr-defined]
+        await helpers["execute_weather"](interaction, self.label, self.machine_code)
+        await interaction.message.delete(delay=0)
+
+
+# --------------------------- /time picker --------------------------------- #
+class TimeSelectView(discord.ui.View):
+    def __init__(self, inter: discord.Interaction):
+        super().__init__(timeout=90)
+        self.inter = inter
+        for human, ticks in TIME_OPTIONS_MAP.items():
+            self.add_item(TimeButton(label=human, ticks=ticks))
+
+
+class TimeButton(discord.ui.Button):  # type: ignore[misc]
+    def __init__(self, *, label: str, ticks: int):
+        super().__init__(label=label, style=discord.ButtonStyle.primary)
+        self.ticks = ticks
+
+    async def callback(self, interaction: discord.Interaction):  # noqa: ANN001
+        helpers = interaction.client.get_cog("game").game_helpers  # type: ignore[attr-defined]
+        await helpers["execute_time"](interaction, self.label, self.ticks)
+        await interaction.message.delete(delay=0)
